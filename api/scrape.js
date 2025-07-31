@@ -2,12 +2,8 @@ const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
 
 module.exports = async (req, res) => {
-  // CORS Whitelist Logic
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',');
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
+  // Allow all origins
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
   const { url, filter, clickSelector } = req.query;
 
