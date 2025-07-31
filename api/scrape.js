@@ -5,7 +5,7 @@ module.exports = async (req, res) => {
   // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const { url, filter, clickSelector } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -31,10 +31,13 @@ module.exports = async (req, res) => {
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
     });
     const page = await context.newPage();
-    await page.setExtraHTTPHeaders({
+    const headers = {
       'Accept-Language': 'en-US,en;q=0.5',
       'Sec-GPC': '1',
-    });
+    };
+    if (customOrigin) headers['Origin'] = customOrigin;
+    if (referer) headers['Referer'] = referer;
+    await page.setExtraHTTPHeaders(headers);
     let requests = [];
 
     await page.route('**/*', (route) => {

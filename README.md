@@ -34,6 +34,8 @@ The scraper is accessed via a single GET endpoint: `/api/scrape`.
 | `url`           | `string` | **Required.** The full URL of the website you want to scrape.                                                                                 |
 | `filter`        | `string` | **Optional.** A string to filter the results by. Only network requests whose URLs contain this string will be returned.                       |
 | `clickSelector` | `string` | **Optional.** A CSS selector for an element you want the scraper to click. Useful for triggering dynamic content like video players.         |
+| `origin`        | `string` | **Optional.** A string to set the `Origin` header for all requests made by the page.                                                       |
+| `referer`       | `string` | **Optional.** A string to set the `Referer` header for all requests made by the page.                                                       |
 
 ### Example Usage
 
@@ -45,7 +47,4 @@ curl "https://your-deployment-url.vercel.app/api/scrape?url=https://player.videa
 
 ### CORS Configuration
 
-To allow your own websites to call this API from a browser, you must configure the `ALLOWED_ORIGINS` environment variable in your Vercel project settings.
-
--   **Name:** `ALLOWED_ORIGINS`
--   **Value:** A comma-separated list of the domains you want to allow (e.g., `https://my-site.com,http://localhost:3000`).
+This API is configured with an open CORS policy (`Access-Control-Allow-Origin: *`), which allows it to be called from any website.
