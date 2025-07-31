@@ -1,0 +1,17 @@
+{
+  "name": "scrape-right",
+  "version": "1.0.0",
+  "description": "A powerful, serverless web scraper built with Playwright and deployed on Vercel.",
+  "main": "api/scrape.js",
+  "scripts": {
+    "start": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "138.0.2",
+    "playwright-core": "^1.44.0"
+  },
+  "devDependencies": {
+    "vercel": "^34.2.0"
+  }
+}
