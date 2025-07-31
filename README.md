@@ -36,6 +36,7 @@ The scraper is accessed via a single GET endpoint: `/api/scrape`.
 | `clickSelector` | `string` | **Optional.** A CSS selector for an element you want the scraper to click. Useful for triggering dynamic content like video players.         |
 | `origin`        | `string` | **Optional.** A string to set the `Origin` header for all requests made by the page.                                                       |
 | `referer`       | `string` | **Optional.** A string to set the `Referer` header for all requests made by the page.                                                       |
+| `resolveRedirect` | `boolean` | **Optional.** If set to `true`, the function will only return the final URL after all redirects. The `filter` and `clickSelector` parameters will be ignored. |
 
 ### Example Usage
 

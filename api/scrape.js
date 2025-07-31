@@ -5,7 +5,7 @@ module.exports = async (req, res) => {
   // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const { url, filter, clickSelector, origin: customOrigin, referer } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, resolveRedirect } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -68,6 +68,12 @@ module.exports = async (req, res) => {
     });
 
     await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    if (resolveRedirect === 'true') {
+      const finalUrl = page.url();
+      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+      return res.status(200).json({ finalUrl });
+    }
 
     // If a clickSelector is provided, try to click it
     if (clickSelector) {
