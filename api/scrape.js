@@ -1,9 +1,7 @@
-const { addExtra } = require('playwright-extra');
-const playwright = require('playwright-core');
+const { chromium } = require('playwright-extra');
 const stealth = require('puppeteer-extra-plugin-stealth')();
 const sparticuzChromium = require('@sparticuz/chromium');
 
-const chromium = addExtra(playwright.chromium);
 chromium.use(stealth);
 
 module.exports = async (req, res) => {
