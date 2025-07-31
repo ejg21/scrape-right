@@ -27,8 +27,14 @@ module.exports = async (req, res) => {
       headless: true,
     });
 
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
+    });
     const page = await context.newPage();
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.5',
+      'Sec-GPC': '1',
+    });
     let requests = [];
 
     await page.route('**/*', (route) => {
