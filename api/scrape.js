@@ -76,8 +76,7 @@ module.exports = async (req, res) => {
     }
 
     if (getIframeSrc === 'true') {
-      const iframeElement = await page.waitForSelector('iframe', { timeout: 10000 });
-      const iframeSrc = await iframeElement.getAttribute('src');
+      const iframeSrc = await page.locator('iframe').first().getAttribute('src');
       res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
       return res.status(200).json({ iframeSrc });
     }
