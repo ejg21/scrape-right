@@ -37,6 +37,7 @@ The scraper is accessed via a single GET endpoint: `/api/scrape`.
 | `origin`        | `string` | **Optional.** A string to set the `Origin` header for all requests made by the page.                                                       |
 | `referer`       | `string` | **Optional.** A string to set the `Referer` header for all requests made by the page.                                                       |
 | `resolveRedirect` | `boolean` | **Optional.** If set to `true`, the function will only return the final URL after all redirects. The `filter` and `clickSelector` parameters will be ignored. |
+| `getIframeSrc`    | `boolean` | **Optional.** If set to `true`, the function will find the first `<iframe>` on the page and return its `src` attribute. All other scraping logic will be ignored. |
 
 ### Example Usage
 
