@@ -5,7 +5,7 @@ module.exports = async (req, res) => {
   // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const { url, filter, clickSelector, origin: customOrigin, referer, resolveRedirect, getIframeSrc } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, resolveRedirect } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -73,12 +73,6 @@ module.exports = async (req, res) => {
       const finalUrl = page.url();
       res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
       return res.status(200).json({ finalUrl });
-    }
-
-    if (getIframeSrc === 'true') {
-      const iframeSrc = await page.locator('iframe').first().getAttribute('src');
-      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
-      return res.status(200).json({ iframeSrc });
     }
 
     // If a clickSelector is provided, try to click it
