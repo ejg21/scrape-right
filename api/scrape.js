@@ -4,7 +4,7 @@ const chromium = require('@sparticuz/chromium');
 const stealth = require('puppeteer-extra-plugin-stealth')();
 
 // Use stealth plugin
-playwright.use(stealth);
+playwright.chromium.use(stealth);
 
 module.exports = async (req, res) => {
   // Allow all origins
@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    browser = await playwright.launch({
+    browser = await playwright.chromium.launch({
       args: [
         ...chromium.args,
         '--disable-dev-shm-usage',
