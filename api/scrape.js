@@ -1,5 +1,9 @@
-const playwright = require('playwright-core');
+const playwright = require('playwright-extra');
 const chromium = require('@sparticuz/chromium');
+const stealth = require('puppeteer-extra-plugin-stealth')();
+
+// Use stealth plugin
+playwright.chromium.use(stealth);
 
 module.exports = async (req, res) => {
   // Allow all origins
@@ -40,31 +44,39 @@ module.exports = async (req, res) => {
     await page.setExtraHTTPHeaders(headers);
     let requests = [];
 
-    await page.route('**/*', (route) => {
-      const request = route.request();
+    const handleRequest = (request) => {
       const resourceType = request.resourceType();
-      const url = request.url();
+      const requestUrl = request.url();
 
       // Block images, stylesheets, and fonts by resource type and file extension
       const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
-      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => url.endsWith(ext))) {
-        return route.abort();
+      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => requestUrl.endsWith(ext))) {
+        return 'abort';
       }
 
       // Block tracking scripts
-      if (url.includes('google-analytics') || url.includes('googletagmanager')) {
-        return route.abort();
+      if (requestUrl.includes('google-analytics') || requestUrl.includes('googletagmanager')) {
+        return 'abort';
       }
 
       // Allow everything else
-      if (!filter || (filter && url.includes(filter))) {
+      if (!filter || (filter && requestUrl.includes(filter))) {
         requests.push({
-          url: url,
+          url: requestUrl,
           method: request.method(),
           headers: request.headers(),
         });
       }
-      return route.continue();
+      return 'continue';
+    };
+
+    await page.route('**/*', (route) => {
+      const action = handleRequest(route.request());
+      if (action === 'abort') {
+        route.abort();
+      } else {
+        route.continue();
+      }
     });
 
     await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -78,6 +90,27 @@ module.exports = async (req, res) => {
           console.log(`Clicked element with selector: ${clickSelector}`);
           // Wait for a few seconds for the video to initialize
           await new Promise(resolve => setTimeout(resolve, 5000));
+
+          // Check for iframes
+          const frames = page.frames();
+          if (frames.length > 1) {
+            const iframe = frames[1]; // Assuming the first iframe is the one we want
+            const iframeUrl = iframe.url();
+            console.log(`Found iframe with URL: ${iframeUrl}`);
+            
+            // Navigate to the iframe URL to capture its requests
+            await iframe.goto(iframeUrl, { waitUntil: 'domcontentloaded' });
+            
+            // Re-apply request interception for the iframe
+            await iframe.route('**/*', (route) => {
+              const action = handleRequest(route.request());
+              if (action === 'abort') {
+                route.abort();
+              } else {
+                route.continue();
+              }
+            });
+          }
         }
       } catch (e) {
         console.log(`Could not find or click the element with selector "${clickSelector}".`, e);
