@@ -36,6 +36,7 @@ The scraper is accessed via a single GET endpoint: `/api/scrape`.
 | `clickSelector` | `string` | **Optional.** A CSS selector for an element you want the scraper to click. Useful for triggering dynamic content like video players.         |
 | `origin`        | `string` | **Optional.** A string to set the `Origin` header for all requests made by the page.                                                       |
 | `referer`       | `string` | **Optional.** A string to set the `Referer` header for all requests made by the page.                                                       |
+| `iframe`        | `boolean`| **Optional.** When set to `true`, the page will be loaded inside an iframe. This is useful for sites that require it for embedded content. |
 
 ### Example Usage
 
@@ -43,6 +44,12 @@ Here is an example of how to use the API with `curl` to find an `.m3u8` file on 
 
 ```bash
 curl "https://your-deployment-url.vercel.app/api/scrape?url=https://player.videasy.net/movie/557&clickSelector=.play-icon-main&filter=.m3u8"
+```
+
+Here is an example of how to use the `iframe` parameter:
+
+```bash
+curl "https://your-deployment-url.vercel.app/api/scrape?url=https://embed.lc/api/embed/tt2250912&iframe=true&filter=.m3u8"
 ```
 
 ### CORS Configuration

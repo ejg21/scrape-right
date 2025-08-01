@@ -5,7 +5,7 @@ module.exports = async (req, res) => {
   // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const { url, filter, clickSelector, origin: customOrigin, referer } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -67,12 +67,20 @@ module.exports = async (req, res) => {
       return route.continue();
     });
 
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    let pageOrFrame = page;
+    if (iframe) {
+      await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
+      const iframeElement = await page.waitForSelector('iframe');
+      pageOrFrame = await iframeElement.contentFrame();
+      await page.waitForTimeout(5000); // Wait for iframe to load
+    } else {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+    }
 
     // If a clickSelector is provided, try to click it
     if (clickSelector) {
       try {
-        const element = await page.waitForSelector(clickSelector, { timeout: 5000 });
+        const element = await pageOrFrame.waitForSelector(clickSelector, { timeout: 5000 });
         if (element) {
           await element.click();
           console.log(`Clicked element with selector: ${clickSelector}`);
