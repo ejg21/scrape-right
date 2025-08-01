@@ -1,10 +1,11 @@
 const { addExtra } = require('playwright-extra');
-const playwright = addExtra(require('playwright-core'));
-const chromium = require('@sparticuz/chromium');
+const playwrightCore = require('playwright-core');
+const sparticuzChromium = require('@sparticuz/chromium');
 const stealth = require('puppeteer-extra-plugin-stealth')();
 
-// Use stealth plugin
-playwright.chromium.use(stealth);
+// Patch the playwright-core chromium launcher
+const chromium = addExtra(playwrightCore.chromium);
+chromium.use(stealth);
 
 module.exports = async (req, res) => {
   // Allow all origins
@@ -20,16 +21,12 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    browser = await playwright.chromium.launch({
-      args: [
-        ...chromium.args,
-        '--disable-dev-shm-usage',
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--single-process',
-      ],
-      executablePath: await chromium.executablePath(),
-      headless: true,
+    const isProduction = process.env.VERCEL_ENV === 'production';
+
+    browser = await chromium.launch({
+      args: isProduction ? sparticuzChromium.args : [],
+      executablePath: isProduction ? await sparticuzChromium.executablePath() : undefined,
+      headless: isProduction ? sparticuzChromium.headless : true,
     });
 
     const context = await browser.newContext({
@@ -130,8 +127,10 @@ module.exports = async (req, res) => {
     if (browser) {
       await browser.close();
     }
-    // Clean up the temporary files
-    await chromium.fontconfig_clear();
-    await chromium.cld_clear();
+    if (process.env.VERCEL_ENV === 'production') {
+      // Clean up the temporary files
+      await sparticuzChromium.fontconfig_clear();
+      await sparticuzChromium.cld_clear();
+    }
   }
 };
