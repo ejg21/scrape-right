@@ -1,11 +1,5 @@
-const { addExtra } = require('playwright-extra');
-const playwrightCore = require('playwright-core');
-const sparticuzChromium = require('@sparticuz/chromium');
-const stealth = require('puppeteer-extra-plugin-stealth')();
-
-// Patch the playwright-core chromium launcher
-const chromium = addExtra(playwrightCore.chromium);
-chromium.use(stealth);
+const playwright = require('playwright-core');
+const chromium = require('@sparticuz/chromium');
 
 module.exports = async (req, res) => {
   // Allow all origins
@@ -21,12 +15,16 @@ module.exports = async (req, res) => {
 
   let browser = null;
   try {
-    const isProduction = process.env.VERCEL_ENV === 'production';
-
-    browser = await chromium.launch({
-      args: isProduction ? sparticuzChromium.args : [],
-      executablePath: isProduction ? await sparticuzChromium.executablePath() : undefined,
-      headless: isProduction ? sparticuzChromium.headless : true,
+    browser = await playwright.chromium.launch({
+      args: [
+        ...chromium.args,
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--single-process',
+      ],
+      executablePath: await chromium.executablePath(),
+      headless: true,
     });
 
     const context = await browser.newContext({
@@ -42,39 +40,31 @@ module.exports = async (req, res) => {
     await page.setExtraHTTPHeaders(headers);
     let requests = [];
 
-    const handleRequest = (request) => {
+    await page.route('**/*', (route) => {
+      const request = route.request();
       const resourceType = request.resourceType();
-      const requestUrl = request.url();
+      const url = request.url();
 
       // Block images, stylesheets, and fonts by resource type and file extension
       const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
-      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => requestUrl.endsWith(ext))) {
-        return 'abort';
+      if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => url.endsWith(ext))) {
+        return route.abort();
       }
 
       // Block tracking scripts
-      if (requestUrl.includes('google-analytics') || requestUrl.includes('googletagmanager')) {
-        return 'abort';
+      if (url.includes('google-analytics') || url.includes('googletagmanager')) {
+        return route.abort();
       }
 
       // Allow everything else
-      if (!filter || (filter && requestUrl.includes(filter))) {
+      if (!filter || (filter && url.includes(filter))) {
         requests.push({
-          url: requestUrl,
+          url: url,
           method: request.method(),
           headers: request.headers(),
         });
       }
-      return 'continue';
-    };
-
-    await page.route('**/*', (route) => {
-      const action = handleRequest(route.request());
-      if (action === 'abort') {
-        route.abort();
-      } else {
-        route.continue();
-      }
+      return route.continue();
     });
 
     await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -88,27 +78,6 @@ module.exports = async (req, res) => {
           console.log(`Clicked element with selector: ${clickSelector}`);
           // Wait for a few seconds for the video to initialize
           await new Promise(resolve => setTimeout(resolve, 5000));
-
-          // Check for iframes
-          const frames = page.frames();
-          if (frames.length > 1) {
-            const iframe = frames[1]; // Assuming the first iframe is the one we want
-            const iframeUrl = iframe.url();
-            console.log(`Found iframe with URL: ${iframeUrl}`);
-            
-            // Navigate to the iframe URL to capture its requests
-            await iframe.goto(iframeUrl, { waitUntil: 'domcontentloaded' });
-            
-            // Re-apply request interception for the iframe
-            await iframe.route('**/*', (route) => {
-              const action = handleRequest(route.request());
-              if (action === 'abort') {
-                route.abort();
-              } else {
-                route.continue();
-              }
-            });
-          }
         }
       } catch (e) {
         console.log(`Could not find or click the element with selector "${clickSelector}".`, e);
@@ -127,10 +96,8 @@ module.exports = async (req, res) => {
     if (browser) {
       await browser.close();
     }
-    if (process.env.VERCEL_ENV === 'production') {
-      // Clean up the temporary files
-      await sparticuzChromium.fontconfig_clear();
-      await sparticuzChromium.cld_clear();
-    }
+    // Clean up the temporary files
+    await chromium.fontconfig_clear();
+    await chromium.cld_clear();
   }
 };
