@@ -5,7 +5,7 @@ module.exports = async (req, res) => {
   // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, wait } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, wait, clearlocalstorage } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -13,8 +13,8 @@ module.exports = async (req, res) => {
     return res.status(400).send('Please provide a URL parameter.');
   }
 
-  // Parse wait parameter as integer (seconds)
   const waitTime = wait ? parseFloat(wait) * 1000 : 0;
+  const clearLS = clearlocalstorage === 'true';
 
   let browser = null;
   try {
@@ -33,6 +33,7 @@ module.exports = async (req, res) => {
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
     });
+
     const page = await context.newPage();
     const headers = {
       'Accept-Language': 'en-US,en;q=0.5',
@@ -49,7 +50,6 @@ module.exports = async (req, res) => {
       const resourceType = request.resourceType();
       const url = request.url();
 
-      // Block images, stylesheets, fonts, and certain scripts
       const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
       if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => url.endsWith(ext))) {
         return route.abort();
@@ -58,7 +58,6 @@ module.exports = async (req, res) => {
         return route.abort();
       }
 
-      // Track requests that match filter (or all if no filter)
       if (!filter || (filter && url.includes(filter))) {
         requests.push({
           url: url,
@@ -74,9 +73,15 @@ module.exports = async (req, res) => {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
       const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-      await page.waitForTimeout(5000); // wait for iframe to load
+      await page.waitForTimeout(5000); // Wait for iframe to load
     } else {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
+    }
+
+    // Clear localStorage if requested
+    if (clearLS) {
+      console.log('Clearing localStorage for this site...');
+      await page.evaluate(() => localStorage.clear());
     }
 
     // Click element if selector provided
@@ -86,7 +91,6 @@ module.exports = async (req, res) => {
         if (element) {
           await element.click();
           console.log(`Clicked element with selector: ${clickSelector}`);
-          // wait for video to initialize (original 5 seconds)
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
       } catch (e) {
