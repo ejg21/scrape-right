@@ -5,13 +5,16 @@ module.exports = async (req, res) => {
   // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const { url, filter, clickSelector, origin: customOrigin, referer, iframe } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, wait } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
   if (!url) {
     return res.status(400).send('Please provide a URL parameter.');
   }
+
+  // Parse wait parameter as integer (seconds)
+  const waitTime = wait ? parseFloat(wait) * 1000 : 0;
 
   let browser = null;
   try {
@@ -38,6 +41,7 @@ module.exports = async (req, res) => {
     if (customOrigin) headers['Origin'] = customOrigin;
     if (referer) headers['Referer'] = referer;
     await page.setExtraHTTPHeaders(headers);
+
     let requests = [];
 
     await page.route('**/*', (route) => {
@@ -45,18 +49,16 @@ module.exports = async (req, res) => {
       const resourceType = request.resourceType();
       const url = request.url();
 
-      // Block images, stylesheets, and fonts by resource type and file extension
+      // Block images, stylesheets, fonts, and certain scripts
       const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
       if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => url.endsWith(ext))) {
         return route.abort();
       }
-
-      // Block tracking scripts
       if (url.includes('google-analytics') || url.includes('googletagmanager')) {
         return route.abort();
       }
 
-      // Allow everything else
+      // Track requests that match filter (or all if no filter)
       if (!filter || (filter && url.includes(filter))) {
         requests.push({
           url: url,
@@ -72,24 +74,30 @@ module.exports = async (req, res) => {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
       const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-      await page.waitForTimeout(5000); // Wait for iframe to load
+      await page.waitForTimeout(5000); // wait for iframe to load
     } else {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
     }
 
-    // If a clickSelector is provided, try to click it
+    // Click element if selector provided
     if (clickSelector) {
       try {
         const element = await pageOrFrame.waitForSelector(clickSelector, { timeout: 5000 });
         if (element) {
           await element.click();
           console.log(`Clicked element with selector: ${clickSelector}`);
-          // Wait for a few seconds for the video to initialize
+          // wait for video to initialize (original 5 seconds)
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
       } catch (e) {
         console.log(`Could not find or click the element with selector "${clickSelector}".`, e);
       }
+    }
+
+    // Wait additional time if wait parameter was provided
+    if (waitTime > 0) {
+      console.log(`Waiting for ${waitTime / 1000} seconds before returning requests...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
@@ -104,7 +112,6 @@ module.exports = async (req, res) => {
     if (browser) {
       await browser.close();
     }
-    // Clean up the temporary files
     await chromium.fontconfig_clear();
     await chromium.cld_clear();
   }
