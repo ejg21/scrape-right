@@ -27,13 +27,46 @@ module.exports = async (req, res) => {
       headless: sparticuzChromium.headless,
     });
 
+    // More realistic UA and context options
+    const realisticUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6100.0 Safari/537.36';
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0',
+      userAgent: realisticUserAgent,
+      viewport: { width: 1366, height: 768 },
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
     });
+
+    // Add small init script to make headless/automation fingerprints less obvious
+    await context.addInitScript(() => {
+      // navigator.webdriver -> false
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+
+      // languages
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+      // plugins (non-empty array)
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [ { name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' } ]
+      });
+
+      // minimal window.chrome object
+      try {
+        window.chrome = window.chrome || { runtime: {} };
+      } catch (e) { /* ignore in case of CSP */ }
+    });
+
     const page = await context.newPage();
+
+    // Believable client hints and headers
     const headers = {
-      'Accept-Language': 'en-US,en;q=0.5',
-      'Sec-GPC': '1',
+      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'accept-language': 'en-US,en;q=0.9',
+      'sec-gpc': '1',
+      'upgrade-insecure-requests': '1',
+      // client hints - look like a real Chrome browser
+      'sec-ch-ua': '"Chromium";v="120", "Google Chrome";v="120", "Not A(Brand";v="99"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
     };
     if (customOrigin) headers['Origin'] = customOrigin;
     if (referer) headers['Referer'] = referer;
