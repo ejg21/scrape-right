@@ -2,7 +2,6 @@ const playwright = require('playwright-core');
 const chromium = require('@sparticuz/chromium');
 
 module.exports = async (req, res) => {
-  // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   const { url, filter, clickSelector, origin: customOrigin, referer, iframe, wait, clearlocalstorage } = req.query;
@@ -73,15 +72,21 @@ module.exports = async (req, res) => {
       await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
       const iframeElement = await page.waitForSelector('iframe');
       pageOrFrame = await iframeElement.contentFrame();
-      await page.waitForTimeout(5000); // Wait for iframe to load
+      await page.waitForTimeout(5000);
     } else {
       await page.goto(url, { waitUntil: 'domcontentloaded' });
     }
 
-    // Clear localStorage if requested
+    // Clear localStorage and reload if requested
     if (clearLS) {
       console.log('Clearing localStorage for this site...');
       await page.evaluate(() => localStorage.clear());
+      console.log('Reloading page after clearing localStorage...');
+      if (iframe) {
+        await pageOrFrame.goto(url, { waitUntil: 'domcontentloaded' });
+      } else {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+      }
     }
 
     // Click element if selector provided
@@ -98,7 +103,6 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Wait additional time if wait parameter was provided
     if (waitTime > 0) {
       console.log(`Waiting for ${waitTime / 1000} seconds before returning requests...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -113,9 +117,7 @@ module.exports = async (req, res) => {
     console.error(error);
     res.status(500).send(`An error occurred while scraping the page: ${error.message}`);
   } finally {
-    if (browser) {
-      await browser.close();
-    }
+    if (browser) await browser.close();
     await chromium.fontconfig_clear();
     await chromium.cld_clear();
   }
