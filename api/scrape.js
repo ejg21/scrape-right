@@ -1,15 +1,11 @@
-const { chromium } = require('playwright-core');
-const playwright = require('playwright-extra');
-const stealth = require('puppeteer-extra-plugin-stealth')();
-const sparticuzChromium = require('@sparticuz/chromium');
-
-playwright.addExtra(chromium).use(stealth);
+const playwright = require('playwright-core');
+const chromium = require('@sparticuz/chromium');
 
 module.exports = async (req, res) => {
   // Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  const { url, filter, clickSelector, origin: customOrigin, referer, wait } = req.query;
+  const { url, filter, clickSelector, origin: customOrigin, referer, iframe, wait, clearlocalstorage } = req.query;
 
   console.log(`Scraping url: ${url}`);
 
@@ -17,57 +13,47 @@ module.exports = async (req, res) => {
     return res.status(400).send('Please provide a URL parameter.');
   }
 
-  const waitTime = wait ? parseFloat(wait) * 1000 : 0; // convert seconds to ms
+  const waitTime = wait ? parseFloat(wait) * 1000 : 0;
+  const clearLS = clearlocalstorage === 'true';
+
+  // More realistic User-Agent (Chrome on Windows) and matching client hints
+  const realisticUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  const clientHints = {
+    'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'accept-language': 'en-US,en;q=0.5',
+    'sec-gpc': '1',
+    'upgrade-insecure-requests': '1',
+    // Typical Sec-CH-UA values that don't reveal "HeadlessChrome"
+    'sec-ch-ua': '"Chromium";v="120", "Google Chrome";v="120", "Not A;Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+  };
 
   let browser = null;
   try {
     browser = await playwright.chromium.launch({
-      args: sparticuzChromium.args,
-      executablePath: await sparticuzChromium.executablePath(),
-      headless: sparticuzChromium.headless,
+      args: [
+        ...chromium.args,
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--single-process',
+      ],
+      executablePath: await chromium.executablePath(),
+      headless: true,
     });
 
-    // More realistic UA and context options
-    const realisticUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6100.0 Safari/537.36';
     const context = await browser.newContext({
       userAgent: realisticUserAgent,
-      viewport: { width: 1366, height: 768 },
+      // you can also set viewport / locale here if needed:
+      viewport: { width: 1280, height: 720 },
       locale: 'en-US',
-      timezoneId: 'America/New_York',
-    });
-
-    // Add small init script to make headless/automation fingerprints less obvious
-    await context.addInitScript(() => {
-      // navigator.webdriver -> false
-      Object.defineProperty(navigator, 'webdriver', { get: () => false });
-
-      // languages
-      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-
-      // plugins (non-empty array)
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => [ { name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' } ]
-      });
-
-      // minimal window.chrome object
-      try {
-        window.chrome = window.chrome || { runtime: {} };
-      } catch (e) { /* ignore in case of CSP */ }
     });
 
     const page = await context.newPage();
 
-    // Believable client hints and headers
-    const headers = {
-      'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-      'accept-language': 'en-US,en;q=0.9',
-      'sec-gpc': '1',
-      'upgrade-insecure-requests': '1',
-      // client hints - look like a real Chrome browser
-      'sec-ch-ua': '"Chromium";v="120", "Google Chrome";v="120", "Not A(Brand";v="99"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-    };
+    // Start with the client-hint headers above, add Origin/Referer if provided
+    const headers = { ...clientHints };
     if (customOrigin) headers['Origin'] = customOrigin;
     if (referer) headers['Referer'] = referer;
     await page.setExtraHTTPHeaders(headers);
@@ -79,15 +65,18 @@ module.exports = async (req, res) => {
       const resourceType = request.resourceType();
       const reqUrl = request.url();
 
+      // Block images, stylesheets, fonts, and common static extensions
       const blockedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.css', '.woff', '.woff2', '.ttf', '.otf'];
       if (resourceType === 'image' || resourceType === 'stylesheet' || resourceType === 'font' || blockedExtensions.some(ext => reqUrl.endsWith(ext))) {
         return route.abort();
       }
 
+      // Block obvious tracking scripts
       if (reqUrl.includes('google-analytics') || reqUrl.includes('googletagmanager')) {
         return route.abort();
       }
 
+      // Track requests that match filter (or all if no filter)
       if (!filter || (filter && reqUrl.includes(filter))) {
         requests.push({
           url: reqUrl,
@@ -98,16 +87,42 @@ module.exports = async (req, res) => {
       return route.continue();
     });
 
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    let pageOrFrame = page;
+    if (iframe) {
+      await page.setContent(`<iframe src="${url}" style="width:100%; height:100vh;" frameBorder="0"></iframe>`);
+      const iframeElement = await page.waitForSelector('iframe');
+      pageOrFrame = await iframeElement.contentFrame();
+      await page.waitForTimeout(5000); // Wait for iframe to load
+    } else {
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+    }
 
-    // If a clickSelector is provided, try to click it
+    // Clear localStorage and reload if requested
+    if (clearLS) {
+      console.log('Clearing localStorage for this site...');
+      // If iframe we must run on the frame; otherwise run on page
+      if (pageOrFrame !== page) {
+        await pageOrFrame.evaluate(() => localStorage.clear());
+      } else {
+        await page.evaluate(() => localStorage.clear());
+      }
+      console.log('Reloading page after clearing localStorage...');
+      if (iframe) {
+        // navigate the frame to the URL again
+        await pageOrFrame.goto(url, { waitUntil: 'domcontentloaded' });
+      } else {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+      }
+    }
+
+    // Click element if selector provided
     if (clickSelector) {
       try {
-        const element = await page.waitForSelector(clickSelector, { timeout: 5000 });
+        const element = await pageOrFrame.waitForSelector(clickSelector, { timeout: 5000 });
         if (element) {
           await element.click();
           console.log(`Clicked element with selector: ${clickSelector}`);
-          // Wait for a few seconds for the video to initialize
+          // small wait for initialization (keeps your original behavior)
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
       } catch (e) {
@@ -115,9 +130,9 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Wait for &wait param if provided
+    // Additional wait if provided
     if (waitTime > 0) {
-      console.log(`Waiting for ${waitTime / 1000} seconds before returning results...`);
+      console.log(`Waiting for ${waitTime / 1000} seconds before returning requests...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
@@ -133,5 +148,7 @@ module.exports = async (req, res) => {
     if (browser) {
       await browser.close();
     }
+    await chromium.fontconfig_clear();
+    await chromium.cld_clear();
   }
 };
